@@ -41,7 +41,7 @@ This API serves personalized movie recommendations using a Neural Collaborative 
 ### Get Recommendations
 
 ```
-GET /api/recommendations?user_id={user_id}&top_k={top_k}
+GET /recommendations?user_id={user_id}&top_k={top_k}
 ```
 
 Parameters:
@@ -52,7 +52,7 @@ Parameters:
 Example:
 
 ```
-curl http://localhost:8000/api/recommendations?user_id=1
+curl http://localhost:8000/recommendations?user_id=1&top_k=20
 ```
 
 Response:

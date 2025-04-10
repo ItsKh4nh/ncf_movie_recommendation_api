@@ -107,10 +107,10 @@ async def startup_event():
 
 @app.get("/")
 def read_root():
-    return {"message": "Movie Recommendation API is running"}
+    return {"message": "CineWorld Recommendation API is currently running"}
 
 
-@app.get("/api/recommendations")
+@app.get("/recommendations")
 def get_recommendations(user_id: int, top_k: int = 20):
     if model is None or movie_data is None:
         raise HTTPException(
