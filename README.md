@@ -2,14 +2,65 @@
 
 This API serves personalized movie recommendations using a Neural Collaborative Filtering model.
 
-## Prerequisites
+## Public API
+
+The API is publicly available at:
+
+```
+https://cineworld-movie-recommendation-api.onrender.com
+```
+
+### Get Recommendations
+
+```
+GET /recommendations?user_id={user_id}&top_k={top_k}
+```
+
+Parameters:
+
+- `user_id`: User ID for which recommendations should be generated
+- `top_k` (optional): Number of recommendations to return (default: 20)
+
+Example:
+
+```
+curl https://cineworld-movie-recommendation-api.onrender.com/recommendations?user_id=1&top_k=20
+```
+
+Response:
+
+```json
+{
+  "user_id": 1,
+  "recommendations": [
+    {
+      "id": 1234,
+      "title": "Movie Title",
+      "score": 0.9123
+    },
+    ...
+  ],
+  "processing_time_ms": 120.45
+}
+```
+
+### API Documentation
+
+For detailed API documentation, visit:
+
+- https://cineworld-movie-recommendation-api.onrender.com/docs - SwaggerUI API documentation
+- https://cineworld-movie-recommendation-api.onrender.com/redoc - ReDoc API documentation
+
+## Local Development
+
+### Prerequisites
 
 - Docker
 - Trained model files:
   - `models/ncf_model.pt` - The trained PyTorch model
   - `models/movie_data.pkl` - Movie data for recommendations
 
-## Setup
+### Setup
 
 1. Make sure you have the trained model files ready. These files should be generated from the `collaborative.py` script after training.
 
@@ -35,46 +86,3 @@ This API serves personalized movie recommendations using a Neural Collaborative 
      ```
      docker run -p 8000:8000 -v ${PWD}/models:/app/models movie-recommender
      ```
-
-## API Usage
-
-### Get Recommendations
-
-```
-GET /recommendations?user_id={user_id}&top_k={top_k}
-```
-
-Parameters:
-
-- `user_id`: User ID for which recommendations should be generated
-- `top_k` (optional): Number of recommendations to return (default: 20)
-
-Example:
-
-```
-curl http://localhost:8000/recommendations?user_id=1&top_k=20
-```
-
-Response:
-
-```json
-{
-  "user_id": 1,
-  "recommendations": [
-    {
-      "id": 1234,
-      "title": "Movie Title",
-      "score": 0.9123
-    },
-    ...
-  ],
-  "processing_time_ms": 120.45
-}
-```
-
-## API Documentation
-
-Once the server is running, visit:
-
-- http://localhost:8000/docs - SwaggerUI API documentation
-- http://localhost:8000/redoc - ReDoc API documentation
