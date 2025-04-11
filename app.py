@@ -142,7 +142,7 @@ def get_recommendations(user_id: int, top_k: int = 20):
     top_indices = np.argsort(scores)[::-1][:top_k]
     recommendations = [
         {
-            "id": int(all_movie_ids[i]),
+            "movie_id": int(all_movie_ids[i]),
             "title": movie_titles.get(int(all_movie_ids[i])),
             "score": float(scores[i]),
         }

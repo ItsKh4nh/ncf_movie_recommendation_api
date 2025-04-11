@@ -34,7 +34,7 @@ Response:
   "user_id": 1,
   "recommendations": [
     {
-      "id": 1234,
+      "movie_id": 1234,
       "title": "Movie Title",
       "score": 0.9123
     },
