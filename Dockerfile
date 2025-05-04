@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code and models
 COPY app.py .
 COPY models/ncf_model.pt models/
-COPY models/movie_data.pkl models/
+COPY models/movie_mappings.pkl models/
 
 # Expose API port
 EXPOSE 8000

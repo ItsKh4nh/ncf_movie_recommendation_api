@@ -58,7 +58,7 @@ For detailed API documentation, visit:
 - Docker
 - Trained model files:
   - `models/ncf_model.pt` - The trained PyTorch model
-  - `models/movie_data.pkl` - Movie data for recommendations
+  - `models/movie_mappings.pkl` - Movie data for recommendations
 
 ### Setup
 

@@ -236,7 +236,7 @@ def train_model():
     )
 
     print("Saving movie data...")
-    with open("models/movie_data.pkl", "wb") as f:
+    with open("models/movie_mappings.pkl", "wb") as f:
         pickle.dump({"movie_ids": all_movie_ids, "movie_titles": movie_id_to_title}, f)
 
     print(f"Model and data saved successfully")
@@ -310,7 +310,7 @@ def recommend(
     user_id,
     top_k=20,
     model_path="models/ncf_model.pt",
-    movie_data_path="models/movie_data.pkl",
+    movie_mappings_path="models/movie_mappings.pkl",
 ):
     """Get movie recommendations for a specific user"""
     start_time = time.time()
@@ -329,12 +329,12 @@ def recommend(
     print("Done")
 
     print("Loading movie data...", end=" ")
-    with open(movie_data_path, "rb") as f:
-        movie_data = pickle.load(f)
+    with open(movie_mappings_path, "rb") as f:
+        movie_mappings = pickle.load(f)
     print("Done")
 
-    all_movie_ids = movie_data["movie_ids"]
-    movie_titles = movie_data["movie_titles"]
+    all_movie_ids = movie_mappings["movie_ids"]
+    movie_titles = movie_mappings["movie_titles"]
 
     print(f"Computing scores for {len(all_movie_ids)} movies...")
 

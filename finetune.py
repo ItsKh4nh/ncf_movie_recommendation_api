@@ -20,26 +20,26 @@ np.random.seed(123)
 ##############################
 # 2. DATA PREPARATION
 ##############################
-print("Starting Data Preparation Process...")
 start_time = time.time()
 
 ratings = pd.read_csv("/kaggle/input/tmdb-movie-dataset/movielens.csv")
-print(f"Data loaded in {time.time() - start_time:.2f} seconds. Processing...")
+print(
+    f"Data successfully loaded in {time.time() - start_time:.2f} seconds. Processing..."
+)
 
 # Convert datatypes
 ratings["timestamp"] = pd.to_datetime(ratings["timestamp"], unit="s")
 ratings["title"] = ratings["title"].astype("string")
 
-# Split into train/test sets - last interaction as test
-print("Splitting into train/test sets...")
+# Split into Train/Test sets - last interaction as test
+print("Splitting into Train/Test sets...")
 ratings["rank_latest"] = ratings.groupby(["user_id"])["timestamp"].rank(
     method="first", ascending=False
 )
 train_ratings = ratings[ratings["rank_latest"] != 1]
 test_ratings = ratings[ratings["rank_latest"] == 1]
 
-# Create a movie_id to title mapping
-print("Creating movie_id to title mapping...")
+print("Creating data mapping...")
 movie_id_to_title = (
     ratings[["movie_id", "title"]]
     .drop_duplicates()
@@ -208,7 +208,7 @@ def train_model():
     trainer.fit(model)
     print(f"Training completed in {time.time() - start_time:.2f} seconds")
 
-    print("Saving model...")
+    print("Saving necessary files...")
     os.makedirs("models", exist_ok=True)
     torch.save(
         {
@@ -219,11 +219,8 @@ def train_model():
         "models/ncf_model.pt",
     )
 
-    print("Saving movie data...")
-    with open("models/movie_data.pkl", "wb") as f:
+    with open("models/movie_mappings.pkl", "wb") as f:
         pickle.dump({"movie_ids": all_movie_ids, "movie_titles": movie_id_to_title}, f)
-
-    print(f"Model and data saved successfully")
     return model
 
 
@@ -245,11 +242,12 @@ def evaluate_model(model):
     print("Building user interaction dictionary...")
     user_interacted_items = ratings.groupby("user_id")["movie_id"].apply(list).to_dict()
 
-    # Evaluate with Hit Ratio@10
+    # Evaluate metrics at K=10
+    K = 10
     device = next(model.parameters()).device
-    hits = []
+    hits, precisions, recalls, f1s, aps, ndcgs = [], [], [], [], [], []
 
-    print("Testing model performance...")
+    print("Evaluating...")
     for u, item in tqdm(test_user_item_set, desc="Evaluating"):
         interacted_items = user_interacted_items[u]
         not_interacted_items = set(all_movie_ids) - set(interacted_items)
@@ -264,21 +262,87 @@ def evaluate_model(model):
         with torch.no_grad():
             predicted_labels = np.squeeze(model(user_tensor, item_tensor).cpu().numpy())
 
-        # Get top 10 items
-        top10_items = [
-            test_items[j] for j in np.argsort(predicted_labels)[::-1][0:10].tolist()
-        ]
+        # Get indices of top K items
+        top_indices = np.argsort(predicted_labels)[::-1][:K].tolist()
+        top_items = [test_items[i] for i in top_indices]
 
-        # Check if positive item is in top10
-        if item in top10_items:
-            hits.append(1)
+        # Hit Ratio: Check if positive item is in top K
+        hit = 1.0 if item in top_items else 0.0
+        hits.append(hit)
+
+        # Precision: Proportion of recommended items that are relevant
+        precision = hit / K
+        precisions.append(precision)
+
+        # Recall: Proportion of relevant items that are recommended
+        # In this case, we only have one relevant item per user in the test set
+        recall = hit
+        recalls.append(recall)
+
+        # F1: Harmonic mean of precision and recall
+        f1 = (
+            (2 * precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0
+        )
+        f1s.append(f1)
+
+        # Average Precision (AP) for MAP
+        # AP is the precision at each position where a relevant item is found, divided by the rank of that item
+        if hit:
+            # Find the position (1-based) of the relevant item
+            relevant_indices = [
+                i for i, item_id in enumerate(top_items) if item_id == item
+            ]
+            if relevant_indices:  # Should always be true if hit is 1
+                # Calculate precision at the position where the relevant item was found
+                position = relevant_indices[0] + 1  # Convert to 1-based indexing
+                ap = 1.0 / position
+            else:
+                ap = 0.0
         else:
-            hits.append(0)
+            ap = 0.0
+        aps.append(ap)
 
-    hit_ratio = np.average(hits)
+        # NDCG: Normalized Discounted Cumulative Gain
+        # For single relevant item, DCG is just 1/log2(pos+1) if the item is in top K
+        if hit:
+            # Find the position (1-based) of the relevant item
+            position = top_items.index(item) + 1
+            dcg = 1.0 / np.log2(position + 1)
+            # Ideal DCG would place the relevant item at position 1
+            idcg = 1.0
+            ndcg = dcg / idcg
+        else:
+            ndcg = 0.0
+        ndcgs.append(ndcg)
+
+    # Calculate final metrics
+    hit_ratio = np.mean(hits)
+    precision = np.mean(precisions)
+    recall = np.mean(recalls)
+    f1 = np.mean(f1s)
+    map_score = np.mean(aps)  # MAP is the mean of average precision
+    ndcg = np.mean(ndcgs)
+
     print(f"Evaluation completed in {time.time() - start_time:.2f} seconds")
-    print(f"The Hit Ratio @ 10 is {hit_ratio:.2f}")
-    return hit_ratio
+    print(f"Hit Ratio @ {K}:  {hit_ratio:.4f}")
+    print(f"Precision @ {K}:  {precision:.4f}")
+    print(f"Recall @ {K}:     {recall:.4f}")
+    print(f"F1-Measure @ {K}: {f1:.4f}")
+    print(f"MAP @ {K}:        {map_score:.4f}")
+    print(f"NDCG @ {K}:       {ndcg:.4f}")
+
+    metrics = {
+        "hit_ratio": hit_ratio,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "map": map_score,
+        "ndcg": ndcg,
+    }
+
+    return metrics
 
 
 ##############################
@@ -286,13 +350,13 @@ def evaluate_model(model):
 ##############################
 def recommend(
     user_id,
-    top_k=20,
+    top_k=10,
     model_path="models/ncf_model.pt",
-    movie_data_path="models/movie_data.pkl",
+    movie_mappings_path="models/movie_mappings.pkl",
 ):
     """Get movie recommendations for a specific user"""
     start_time = time.time()
-    print(f"Getting recommendations for user_id: {user_id}...")
+    print(f"Getting recommendations for user_id: {user_id}")
 
     print("Loading model...", end=" ")
     checkpoint = torch.load(model_path)
@@ -307,14 +371,14 @@ def recommend(
     print("Done")
 
     print("Loading movie data...", end=" ")
-    with open(movie_data_path, "rb") as f:
-        movie_data = pickle.load(f)
+    with open(movie_mappings_path, "rb") as f:
+        movie_mappings = pickle.load(f)
     print("Done")
 
-    all_movie_ids = movie_data["movie_ids"]
-    movie_titles = movie_data["movie_titles"]
+    all_movie_ids = movie_mappings["movie_ids"]
+    movie_titles = movie_mappings["movie_titles"]
 
-    print(f"Computing scores for {len(all_movie_ids)} movies...")
+    print(f"Computing scores...")
 
     # Predict scores
     device = next(model.parameters()).device
@@ -347,12 +411,14 @@ if __name__ == "__main__":
     overall_start = time.time()
 
     model = train_model()
-    evaluate_model(model)
+    metrics = evaluate_model(model)
 
-    recs = recommend(user_id=1, top_k=20)
-    print("\nRecommended movies for user_id: 1")
+    user_id = 100  # Test with user_id 100
+    recs = recommend(user_id=user_id, top_k=10)
+
+    print(f"\nRecommended movies for user_id: {user_id}")
     for i, movie in enumerate(recs, 1):
-        print(f"{i}. {movie['title']} (Score: {movie['score']:.4f})")
+        print(f"{i}. {movie['title']} (Score: {movie['score']:.5f})")
 
     overall_time = time.time() - overall_start
     print("\n" + "=" * 50)

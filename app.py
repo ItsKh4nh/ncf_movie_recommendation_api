@@ -66,20 +66,20 @@ class NCF(pl.LightningModule):
 
 # Load model and movie data
 model = None
-movie_data = None
+movie_mappings = None
 
 
 def load_model():
-    global model, movie_data
+    global model, movie_mappings
 
     # Set paths
     model_path = os.path.join("models", "ncf_model.pt")
-    movie_data_path = os.path.join("models", "movie_data.pkl")
+    movie_mappings_path = os.path.join("models", "movie_mappings.pkl")
 
     # Check if model files exist
-    if not os.path.exists(model_path) or not os.path.exists(movie_data_path):
+    if not os.path.exists(model_path) or not os.path.exists(movie_mappings_path):
         raise FileNotFoundError(
-            f"Model files not found. Ensure {model_path} and {movie_data_path} exist."
+            f"Model files not found. Ensure {model_path} and {movie_mappings_path} exist."
         )
 
     # Load model
@@ -94,8 +94,8 @@ def load_model():
     model.eval()
 
     # Load movie data
-    with open(movie_data_path, "rb") as f:
-        movie_data = pickle.load(f)
+    with open(movie_mappings_path, "rb") as f:
+        movie_mappings = pickle.load(f)
 
     return {"status": "Model loaded successfully"}
 
@@ -111,8 +111,8 @@ def read_root():
 
 
 @app.get("/recommendations")
-def get_recommendations(user_id: int, top_k: int = 20):
-    if model is None or movie_data is None:
+def get_recommendations(user_id: int, top_k: int = 10):
+    if model is None or movie_mappings is None:
         raise HTTPException(
             status_code=503, detail="Model not loaded. Please try again later."
         )
@@ -120,8 +120,8 @@ def get_recommendations(user_id: int, top_k: int = 20):
     start_time = time.time()
 
     # Get movie info
-    all_movie_ids = movie_data["movie_ids"]
-    movie_titles = movie_data["movie_titles"]
+    all_movie_ids = movie_mappings["movie_ids"]
+    movie_titles = movie_mappings["movie_titles"]
 
     # Limit user_id to what model supports
     max_users = model.user_embedding.num_embeddings
