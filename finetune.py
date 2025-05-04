@@ -4,381 +4,394 @@
 import pandas as pd
 import numpy as np
 from tqdm.notebook import tqdm
+import time
 import os
 import pickle
-import time
 
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import TQDMProgressBar, EarlyStopping
 
 np.random.seed(123)
-
-
-# Progress tracking function
-def show_progress(current, total, message="Processing", bar_length=30):
-    percent = float(current) * 100 / total
-    arrow = "-" * int(percent / 100 * bar_length)
-    spaces = " " * (bar_length - len(arrow))
-    print(f"\r{message}: [{arrow}{spaces}] {percent:.2f}%", end="")
-    if current == total:
-        print()
-
 
 ##############################
 # 2. DATA PREPARATION
 ##############################
-print("Starting Data Preparation Process...")
-start_time = time.time()
+start_time_data_prep = time.time()
+ratings = pd.read_csv(
+    "/kaggle/input/movielens-32m/ratings.csv", parse_dates=["timestamp"]
+)
 
-ratings = pd.read_csv("/kaggle/input/tmdb-movie-dataset/movielens.csv")
-print(f"Data loaded in {time.time() - start_time:.2f} seconds. Processing...")
+ratings.sample(5)
 
-# Convert datatypes
-ratings["timestamp"] = pd.to_datetime(ratings["timestamp"], unit="s")
-ratings["title"] = ratings["title"].astype("string")
-
-# Split into train/test sets - last interaction as test
-print("Splitting into train/test sets...")
 ratings["rank_latest"] = ratings.groupby(["user_id"])["timestamp"].rank(
     method="first", ascending=False
 )
+
 train_ratings = ratings[ratings["rank_latest"] != 1]
 test_ratings = ratings[ratings["rank_latest"] == 1]
 
-# Create a movie_id to title mapping
-print("Creating movie_id to title mapping...")
-movie_id_to_title = (
-    ratings[["movie_id", "title"]]
-    .drop_duplicates()
-    .set_index("movie_id")
-    .to_dict()["title"]
-)
-
-# Prepare final training data
+# drop columns that we no longer need
 train_ratings = train_ratings[["user_id", "movie_id", "rating"]]
 test_ratings = test_ratings[["user_id", "movie_id", "rating"]]
-train_ratings.loc[:, "rating"] = 1  # Convert to implicit feedback (1 = interaction)
 
-# Get a list of all movie_ids
+train_ratings.loc[:, "rating"] = 1
+
+train_ratings.sample(5)
+
+# Get a list of all movie IDs
 all_movie_ids = ratings["movie_id"].unique()
 
-print(f"Data preparation completed in {time.time() - start_time:.2f} seconds.")
-print(
-    f"Train set: {len(train_ratings)} samples, Test set: {len(test_ratings)} samples, Movies: {len(all_movie_ids)}"
-)
+# Placeholders that will hold the training data
+users, items, labels = [], [], []
+
+# This is the set of items that each user has interaction with
+user_item_set = set(zip(train_ratings["user_id"], train_ratings["movie_id"]))
+
+# 4:1 ratio of negative to positive samples
+num_negatives = 4
+
+for u, i in tqdm(user_item_set):
+    users.append(u)
+    items.append(i)
+    labels.append(1)  # items that the user has interacted with are positive
+    for _ in range(num_negatives):
+        # randomly select an item
+        negative_item = np.random.choice(all_movie_ids)
+        # check that the user has not interacted with this item
+        while (u, negative_item) in user_item_set:
+            negative_item = np.random.choice(all_movie_ids)
+        users.append(u)
+        items.append(negative_item)
+        labels.append(0)  # items not interacted with are negative
+
+end_time_data_prep = time.time()
+print(f"Data Preparation took: {end_time_data_prep - start_time_data_prep:.2f} seconds")
 
 
 ##############################
 # 3. DATASET CLASS
 ##############################
 class MovieLensTrainDataset(Dataset):
-    """MovieLens PyTorch Dataset with on-the-fly negative sampling"""
+    """MovieLens PyTorch Dataset for Training
 
-    def __init__(self, ratings, all_movie_ids, num_negatives=4):
-        self.ratings = ratings
-        self.all_movie_ids = all_movie_ids
-        self.num_negatives = num_negatives
-        self.user_item_set = set(zip(ratings["user_id"], ratings["movie_id"]))
+    Args:
+        ratings (pd.DataFrame): Dataframe containing the movie ratings
+        all_movie_ids (list): List containing all movie_ids
 
-        print("Building user-item interaction matrix...")
-        # Pre-compute user interactions for faster negative sampling
-        self.user_items = {}
-        total = len(self.user_item_set)
-        for i, (u, item) in enumerate(self.user_item_set):
-            if i % (total // 10) == 0:
-                show_progress(i, total, "Building user-item matrix")
+    """
 
-            if u not in self.user_items:
-                self.user_items[u] = set()
-            self.user_items[u].add(item)
-
-        show_progress(total, total, "Building user-item matrix")
-
-        # Create user and item lists for positives only
-        self.users = ratings["user_id"].values
-        self.items = ratings["movie_id"].values
-        self.labels = np.ones(len(self.users))
-        print(f"Dataset initialized with {len(self.users)} positive samples")
+    def __init__(self, ratings, all_movie_ids):
+        self.users, self.items, self.labels = self.get_dataset(ratings, all_movie_ids)
 
     def __len__(self):
-        return len(self.users) * (1 + self.num_negatives)
+        return len(self.users)
 
     def __getitem__(self, idx):
-        # Determine if this is a positive or negative sample
-        base_idx = idx // (1 + self.num_negatives)
-        offset = idx % (1 + self.num_negatives)
+        return self.users[idx], self.items[idx], self.labels[idx]
 
-        user = self.users[base_idx]
+    def get_dataset(self, ratings, all_movie_ids):
+        start_time_dataset = time.time()
+        users, items, labels = [], [], []
+        user_item_set = set(zip(ratings["user_id"], ratings["movie_id"]))
 
-        if offset == 0:  # Positive sample
-            item = self.items[base_idx]
-            label = 1.0
-        else:  # Generate negative sample
-            interacted_items = self.user_items.get(user, set())
-            while True:
-                item = np.random.choice(self.all_movie_ids)
-                if item not in interacted_items:
-                    break
-            label = 0.0
+        num_negatives = 4
+        for u, i in user_item_set:
+            users.append(u)
+            items.append(i)
+            labels.append(1)
+            for _ in range(num_negatives):
+                negative_item = np.random.choice(all_movie_ids)
+                while (u, negative_item) in user_item_set:
+                    negative_item = np.random.choice(all_movie_ids)
+                users.append(u)
+                items.append(negative_item)
+                labels.append(0)
 
-        return torch.tensor(user), torch.tensor(item), torch.tensor(label)
+        end_time_dataset = time.time()
+        print(
+            f"Dataset Generation (get_dataset) took: {end_time_dataset - start_time_dataset:.2f} seconds"
+        )
+        return torch.tensor(users), torch.tensor(items), torch.tensor(labels)
 
 
 ##############################
 # 4. MODEL DEFINITION
 ##############################
 class NCF(pl.LightningModule):
-    """Neural Collaborative Filtering (NCF)"""
+    """Neural Collaborative Filtering (NCF)
 
-    def __init__(
-        self, num_users, num_items, ratings, all_movie_ids, embedding_dim=8, lr=0.001
-    ):
+    Args:
+        num_users (int): Number of unique users
+        num_items (int): Number of unique items
+        ratings (pd.DataFrame): Dataframe containing the movie ratings for training
+        all_movie_ids (list): List containing all movie_ids (train + test)
+    """
+
+    def __init__(self, num_users, num_items, ratings, all_movie_ids):
         super().__init__()
-        print(f"Initializing NCF model")
-        self.user_embedding = nn.Embedding(
-            num_embeddings=num_users, embedding_dim=embedding_dim
-        )
-        self.item_embedding = nn.Embedding(
-            num_embeddings=num_items, embedding_dim=embedding_dim
-        )
-        self.fc1 = nn.Linear(in_features=embedding_dim * 2, out_features=64)
+        self.user_embedding = nn.Embedding(num_embeddings=num_users, embedding_dim=8)
+        self.item_embedding = nn.Embedding(num_embeddings=num_items, embedding_dim=8)
+        self.fc1 = nn.Linear(in_features=16, out_features=64)
         self.fc2 = nn.Linear(in_features=64, out_features=32)
         self.output = nn.Linear(in_features=32, out_features=1)
         self.ratings = ratings
         self.all_movie_ids = all_movie_ids
-        self.lr = lr
-
-        self.save_hyperparameters(ignore=["ratings", "all_movie_ids"])
-        print("Model initialized successfully")
 
     def forward(self, user_input, item_input):
+
+        # Pass through embedding layers
         user_embedded = self.user_embedding(user_input)
         item_embedded = self.item_embedding(item_input)
 
+        # Concat the two embedding layers
         vector = torch.cat([user_embedded, item_embedded], dim=-1)
+
+        # Pass through dense layer
         vector = nn.ReLU()(self.fc1(vector))
         vector = nn.ReLU()(self.fc2(vector))
 
+        # Output layer
         pred = nn.Sigmoid()(self.output(vector))
+
         return pred
 
     def training_step(self, batch, batch_idx):
         user_input, item_input, labels = batch
         predicted_labels = self(user_input, item_input)
         loss = nn.BCELoss()(predicted_labels, labels.view(-1, 1).float())
-        self.log("train_loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        return torch.optim.Adam(self.parameters())
 
     def train_dataloader(self):
-        print("Creating DataLoader...")
         return DataLoader(
             MovieLensTrainDataset(self.ratings, self.all_movie_ids),
             batch_size=512,
             num_workers=4,
-            shuffle=True,
-            pin_memory=True,
-            persistent_workers=True,
         )
 
 
 ##############################
 # 5. TRAINING
 ##############################
-def train_model():
-    print("\n" + "=" * 50)
-    print("MODEL TRAINING STARTED")
-    print("=" * 50)
+start_time_training = time.time()
+num_users = ratings["user_id"].max() + 1
+num_items = ratings["movie_id"].max() + 1
 
-    start_time = time.time()
-    num_users = ratings["user_id"].max() + 1
-    num_items = ratings["movie_id"].max() + 1
+all_movie_ids = ratings["movie_id"].unique()
 
-    model = NCF(num_users, num_items, train_ratings, all_movie_ids)
+model = NCF(num_users, num_items, train_ratings, all_movie_ids)
 
-    # Setup GPU Acceleration
-    print(f"CUDA available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        print(f"GPU device: {torch.cuda.get_device_name(0)}")
+trainer = pl.Trainer(
+    max_epochs=5,
+    gpus=1,
+    reload_dataloaders_every_epoch=True,
+    progress_bar_refresh_rate=50,
+    logger=False,
+    checkpoint_callback=False,
+)
 
-    # Early Stopping to prevent Overfitting
-    early_stop_callback = EarlyStopping(monitor="train_loss", patience=3, mode="min")
+trainer.fit(model)
 
-    trainer = pl.Trainer(
-        max_epochs=5,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
-        reload_dataloaders_every_n_epochs=1,
-        callbacks=[TQDMProgressBar(refresh_rate=20), early_stop_callback],
-        logger=False,
-        enable_checkpointing=False,
-    )
-
-    print(f"Training on: {trainer.accelerator}")
-    print("Training in progress...")
-    trainer.fit(model)
-    print(f"Training completed in {time.time() - start_time:.2f} seconds")
-
-    print("Saving model...")
-    os.makedirs("models", exist_ok=True)
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "num_users": num_users,
-            "num_items": num_items,
-        },
-        "models/ncf_model.pt",
-    )
-
-    print("Saving movie data...")
-    with open("models/movie_data.pkl", "wb") as f:
-        pickle.dump({"movie_ids": all_movie_ids, "movie_titles": movie_id_to_title}, f)
-
-    print(f"Model and data saved successfully")
-    return model
-
+end_time_training = time.time()
+print(f"Model Training took: {end_time_training - start_time_training:.2f} seconds")
 
 ##############################
 # 6. EVALUATION
 ##############################
-def evaluate_model(model):
-    print("\n" + "=" * 50)
-    print("EVALUATING MODEL")
-    print("=" * 50)
+start_time_eval = time.time()
+# User-item pairs for testing
+test_user_item_set = set(zip(test_ratings["user_id"], test_ratings["movie_id"]))
 
-    start_time = time.time()
+# Dict of all items that are interacted with by each user
+user_interacted_items = ratings.groupby("user_id")["movie_id"].apply(list).to_dict()
 
-    # User-item pairs for testing
-    test_user_item_set = set(zip(test_ratings["user_id"], test_ratings["movie_id"]))
-    print(f"Evaluating on {len(test_user_item_set)} test samples")
+hits = []
+for u, i in tqdm(test_user_item_set):
+    interacted_items = user_interacted_items[u]
+    not_interacted_items = set(all_movie_ids) - set(interacted_items)
+    selected_not_interacted = list(np.random.choice(list(not_interacted_items), 99))
+    test_items = selected_not_interacted + [i]
 
-    # Dict of all items that are interacted with by each user
-    print("Building user interaction dictionary...")
-    user_interacted_items = ratings.groupby("user_id")["movie_id"].apply(list).to_dict()
-
-    # Evaluate with Hit Ratio@10
-    device = next(model.parameters()).device
-    hits = []
-
-    print("Testing model performance...")
-    total_test = len(test_user_item_set)
-    for i, (u, item) in enumerate(tqdm(test_user_item_set, desc="Evaluating")):
-        if i % (total_test // 20) == 0:  # Show progress every 5%
-            show_progress(i, total_test, "Evaluation progress")
-
-        interacted_items = user_interacted_items[u]
-        not_interacted_items = set(all_movie_ids) - set(interacted_items)
-
-        # Sample 99 negative items + 1 positive for evaluation
-        selected_not_interacted = list(np.random.choice(list(not_interacted_items), 99))
-        test_items = selected_not_interacted + [item]
-
-        user_tensor = torch.tensor([u] * 100).to(device)
-        item_tensor = torch.tensor(test_items).to(device)
-
-        with torch.no_grad():
-            predicted_labels = np.squeeze(model(user_tensor, item_tensor).cpu().numpy())
-
-        # Get top 10 items
-        top10_items = [
-            test_items[j] for j in np.argsort(predicted_labels)[::-1][0:10].tolist()
-        ]
-
-        # Check if positive item is in top10
-        if item in top10_items:
-            hits.append(1)
-        else:
-            hits.append(0)
-
-    show_progress(total_test, total_test, "Evaluation progress")
-
-    hit_ratio = np.average(hits)
-    print(f"Evaluation completed in {time.time() - start_time:.2f} seconds")
-    print(f"The Hit Ratio @ 10 is {hit_ratio:.2f}")
-    return hit_ratio
-
-
-##############################
-# 7. RECOMMENDATION FUNCTION
-##############################
-def recommend(
-    user_id,
-    top_k=20,
-    model_path="models/ncf_model.pt",
-    movie_data_path="models/movie_data.pkl",
-):
-    """Get movie recommendations for a specific user"""
-    start_time = time.time()
-    print(f"Getting recommendations for user_id: {user_id}...")
-
-    print("Loading model...", end=" ")
-    checkpoint = torch.load(model_path)
-    model = NCF(
-        num_users=checkpoint["num_users"],
-        num_items=checkpoint["num_items"],
-        ratings=None,
-        all_movie_ids=None,
+    predicted_labels = np.squeeze(
+        model(torch.tensor([u] * 100), torch.tensor(test_items)).detach().numpy()
     )
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-    print("Done")
 
-    print("Loading movie data...", end=" ")
-    with open(movie_data_path, "rb") as f:
-        movie_data = pickle.load(f)
-    print("Done")
-
-    all_movie_ids = movie_data["movie_ids"]
-    movie_titles = movie_data["movie_titles"]
-
-    print(f"Computing scores for {len(all_movie_ids)} movies...")
-
-    # Predict scores
-    device = next(model.parameters()).device
-    user_tensor = torch.tensor([user_id] * len(all_movie_ids)).to(device)
-    item_tensor = torch.tensor(all_movie_ids).to(device)
-
-    with torch.no_grad():
-        scores = np.squeeze(model(user_tensor, item_tensor).cpu().numpy())
-
-    # Get top-k recommendations
-    print(f"Finding top {top_k} movies...")
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    recommendations = [
-        {
-            "id": int(all_movie_ids[i]),
-            "title": movie_titles.get(int(all_movie_ids[i])),
-            "score": float(scores[i]),
-        }
-        for i in top_indices
+    top10_items = [
+        test_items[i] for i in np.argsort(predicted_labels)[::-1][0:10].tolist()
     ]
 
-    print(f"Recommendations generated in {time.time() - start_time:.2f} seconds")
-    return recommendations
+    if i in top10_items:
+        hits.append(1)
+    else:
+        hits.append(0)
+
+end_time_eval = time.time()
+print(f"Evaluation took: {end_time_eval - start_time_eval:.2f} seconds")
+print("The Hit Ratio @ 10 is {:.2f}".format(np.average(hits)))
 
 
 ##############################
-# 8. MAIN EXECUTION
+# 7. TEST
 ##############################
+def get_movie_recommendations(
+    user_id, model, all_movie_ids, user_interacted_items, top_k=10
+):
+    """
+    Get movie recommendations for a specific user.
+
+    Args:
+        user_id (int): The ID of the user to get recommendations for
+        model (NCF): The trained model
+        all_movie_ids (array): Array of all movie IDs
+        user_interacted_items (dict): Dictionary of items each user has interacted with
+        top_k (int, optional): Number of recommendations to return. Defaults to 10.
+
+    Returns:
+        list: List of top_k movie IDs recommended for the user
+    """
+    start_time = time.time()
+
+    # Check if user_id exists in the dataset
+    if user_id not in user_interacted_items:
+        print(f"User {user_id} not found in the dataset")
+        return []
+
+    # Get items the user has already interacted with
+    interacted_items = user_interacted_items[user_id]
+
+    # Get items the user has not interacted with
+    not_interacted_items = list(set(all_movie_ids) - set(interacted_items))
+
+    # Predict scores for all non-interacted items
+    batch_size = 1024  # Process in batches to avoid memory issues
+    all_predictions = []
+
+    for i in range(0, len(not_interacted_items), batch_size):
+        batch_items = not_interacted_items[i : i + batch_size]
+        user_tensor = torch.tensor([user_id] * len(batch_items))
+        item_tensor = torch.tensor(batch_items)
+
+        with torch.no_grad():  # No need to compute gradients
+            predictions = model(user_tensor, item_tensor).detach().numpy().squeeze()
+            all_predictions.extend(predictions)
+
+    # Combine items and their predicted scores
+    item_pred_pairs = list(zip(not_interacted_items, all_predictions))
+
+    # Sort by prediction score (highest first)
+    item_pred_pairs.sort(key=lambda x: x[1], reverse=True)
+
+    # Get top-k items
+    top_k_items = [item for item, _ in item_pred_pairs[:top_k]]
+
+    end_time = time.time()
+    print(f"Recommendation generation took: {end_time - start_time:.2f} seconds")
+
+    return top_k_items
+
+
+# Function to load movie information from links.csv
+def load_movie_info():
+    """
+    Load movie information from links.csv file
+
+    Returns:
+        dict: Dictionary mapping movie_id to (tmdb_id, title)
+    """
+    start_time = time.time()
+    print("Loading movie information from links.csv...")
+
+    try:
+        # Load links.csv file
+        links_df = pd.read_csv("links.csv")
+
+        # Create a dictionary mapping movie_id to (tmdb_id, title)
+        movie_info = {}
+        for _, row in links_df.iterrows():
+            movie_info[row["movie_id"]] = (row["tmdb_id"], row["title"])
+
+        end_time = time.time()
+        print(
+            f"Loaded information for {len(movie_info)} movies in {end_time - start_time:.2f} seconds"
+        )
+
+        return movie_info, links_df
+
+    except Exception as e:
+        print(f"Error loading movie information: {e}")
+        return {}, None
+
+
+##############################
+# 8. SAVE MODEL AND DATA
+##############################
+def save_outputs(model, links_df):
+    """
+    Save model and links data to output folder for later use
+
+    Args:
+        model (NCF): Trained NCF model
+        links_df (DataFrame): DataFrame containing links data
+    """
+    start_time = time.time()
+    print("\nSaving model and data to output folder...")
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists("output"):
+        os.makedirs("output")
+        print("Created output directory")
+
+    # Save the trained model
+    try:
+        model_path = os.path.join("output", "ncf_model.pt")
+        torch.save(model.state_dict(), model_path)
+        print(f"Model saved to {model_path}")
+    except Exception as e:
+        print(f"Error saving model: {e}")
+
+    # Save links data as pickle file
+    try:
+        if links_df is not None:
+            links_path = os.path.join("output", "links.pkl")
+            with open(links_path, "wb") as f:
+                pickle.dump(links_df, f)
+            print(f"Links data saved to {links_path}")
+        else:
+            print("Links data not available to save")
+    except Exception as e:
+        print(f"Error saving links data: {e}")
+
+    end_time = time.time()
+    print(f"Saving completed in {end_time - start_time:.2f} seconds")
+
+
+# Example usage
 if __name__ == "__main__":
-    overall_start = time.time()
+    # Load movie information
+    movie_info, links_df = load_movie_info()
 
-    model = train_model()
-    evaluate_model(model)
+    # Test with a sample user (ensure the user exists in your dataset)
+    sample_user_id = 1  # Replace with a valid user ID from your dataset
 
-    recs = recommend(user_id=1, top_k=20)
-    print("\nRecommended movies for user_id: 1")
-    for i, movie in enumerate(recs, 1):
-        print(f"{i}. {movie['title']} (Score: {movie['score']:.4f})")
-
-    overall_time = time.time() - overall_start
-    print("\n" + "=" * 50)
-    print(
-        f"TOTAL EXECUTION TIME: {overall_time:.2f} seconds ({overall_time/60:.2f} minutes)"
+    print(f"\nGenerating movie recommendations for user {sample_user_id}:")
+    recommendations = get_movie_recommendations(
+        user_id=sample_user_id,
+        model=model,
+        all_movie_ids=all_movie_ids,
+        user_interacted_items=user_interacted_items,
     )
-    print("=" * 50)
+
+    if recommendations:
+        print(f"\nTop 10 movie recommendations for user {sample_user_id}:")
+        for i, movie_id in enumerate(recommendations, 1):
+            if movie_id in movie_info:
+                tmdb_id, title = movie_info[movie_id]
+                print(f"{i}. {title} (ID: {movie_id}, TMDB ID: {tmdb_id})")
+            else:
+                print(f"{i}. Movie ID: {movie_id} (Title not available)")
+    # Save model and data for later use
+    save_outputs(model, links_df)
