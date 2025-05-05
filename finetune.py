@@ -245,7 +245,7 @@ def evaluate_model(model):
     # Evaluate metrics at K=10
     K = 10
     device = next(model.parameters()).device
-    hits, precisions, recalls, f1s, aps, ndcgs = [], [], [], [], [], []
+    hits, ndcgs = [], []
 
     print("Evaluating...")
     for u, item in tqdm(test_user_item_set, desc="Evaluating"):
@@ -270,42 +270,7 @@ def evaluate_model(model):
         hit = 1.0 if item in top_items else 0.0
         hits.append(hit)
 
-        # Precision: Proportion of recommended items that are relevant
-        precision = hit / K
-        precisions.append(precision)
-
-        # Recall: Proportion of relevant items that are recommended
-        # In this case, we only have one relevant item per user in the test set
-        recall = hit
-        recalls.append(recall)
-
-        # F1: Harmonic mean of precision and recall
-        f1 = (
-            (2 * precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0
-        )
-        f1s.append(f1)
-
-        # Average Precision (AP) for MAP
-        # AP is the precision at each position where a relevant item is found, divided by the rank of that item
-        if hit:
-            # Find the position (1-based) of the relevant item
-            relevant_indices = [
-                i for i, item_id in enumerate(top_items) if item_id == item
-            ]
-            if relevant_indices:  # Should always be true if hit is 1
-                # Calculate precision at the position where the relevant item was found
-                position = relevant_indices[0] + 1  # Convert to 1-based indexing
-                ap = 1.0 / position
-            else:
-                ap = 0.0
-        else:
-            ap = 0.0
-        aps.append(ap)
-
         # NDCG: Normalized Discounted Cumulative Gain
-        # For single relevant item, DCG is just 1/log2(pos+1) if the item is in top K
         if hit:
             # Find the position (1-based) of the relevant item
             position = top_items.index(item) + 1
@@ -319,28 +284,13 @@ def evaluate_model(model):
 
     # Calculate final metrics
     hit_ratio = np.mean(hits)
-    precision = np.mean(precisions)
-    recall = np.mean(recalls)
-    f1 = np.mean(f1s)
-    map_score = np.mean(aps)  # MAP is the mean of average precision
     ndcg = np.mean(ndcgs)
 
     print(f"Evaluation completed in {time.time() - start_time:.2f} seconds")
     print(f"Hit Ratio @ {K}:  {hit_ratio:.4f}")
-    print(f"Precision @ {K}:  {precision:.4f}")
-    print(f"Recall @ {K}:     {recall:.4f}")
-    print(f"F1-Measure @ {K}: {f1:.4f}")
-    print(f"MAP @ {K}:        {map_score:.4f}")
     print(f"NDCG @ {K}:       {ndcg:.4f}")
 
-    metrics = {
-        "hit_ratio": hit_ratio,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "map": map_score,
-        "ndcg": ndcg,
-    }
+    metrics = {"hit_ratio": hit_ratio, "ndcg": ndcg}
 
     return metrics
 
@@ -370,7 +320,7 @@ def recommend(
     model.eval()
     print("Done")
 
-    print("Loading movie data...", end=" ")
+    print("Loading movie mappings...", end=" ")
     with open(movie_mappings_path, "rb") as f:
         movie_mappings = pickle.load(f)
     print("Done")
