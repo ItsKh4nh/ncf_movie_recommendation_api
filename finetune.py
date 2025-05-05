@@ -252,11 +252,13 @@ def evaluate_model(model):
         interacted_items = user_interacted_items[u]
         not_interacted_items = set(all_movie_ids) - set(interacted_items)
 
-        # Sample 99 negative items + 1 positive for evaluation
-        selected_not_interacted = list(np.random.choice(list(not_interacted_items), 99))
+        # Sample 999 negative items + 1 positive for evaluation
+        selected_not_interacted = list(
+            np.random.choice(list(not_interacted_items), 999)
+        )
         test_items = selected_not_interacted + [item]
 
-        user_tensor = torch.tensor([u] * 100).to(device)
+        user_tensor = torch.tensor([u] * 1000).to(device)
         item_tensor = torch.tensor(test_items).to(device)
 
         with torch.no_grad():
@@ -287,8 +289,8 @@ def evaluate_model(model):
     ndcg = np.mean(ndcgs)
 
     print(f"Evaluation completed in {time.time() - start_time:.2f} seconds")
-    print(f"Hit Ratio @ {K}:  {hit_ratio:.4f}")
-    print(f"NDCG @ {K}:       {ndcg:.4f}")
+    print(f"Hit Ratio@{K}:  {hit_ratio:.4f}")
+    print(f"NDCG@{K}:       {ndcg:.4f}")
 
     metrics = {"hit_ratio": hit_ratio, "ndcg": ndcg}
 
