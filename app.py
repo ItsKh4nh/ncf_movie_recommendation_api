@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 
-# Neural Collaborative Filtering (NCF) model definition
+# Model definition
 class NCF(pl.LightningModule):
     """Neural Collaborative Filtering (NCF)"""
 

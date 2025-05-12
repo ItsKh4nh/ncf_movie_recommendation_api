@@ -62,7 +62,7 @@ For detailed API documentation, visit:
 
 ### Setup
 
-1. Make sure you have the trained model files ready. These files should be generated from the `collaborative.py` script after training.
+1. Make sure you have the trained model files ready. These files should be generated from the `training/collaborative.py` script after training.
 
 2. Place the model files in a local `output` directory.
 
