@@ -6,7 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and output
+# Copy necessary files
 COPY app.py .
 COPY output/ncf_model.pt output/
 COPY output/movie_mappings.pkl output/
