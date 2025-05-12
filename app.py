@@ -73,8 +73,8 @@ def load_model():
     global model, movie_mappings
 
     # Set paths
-    model_path = os.path.join("models", "ncf_model.pt")
-    movie_mappings_path = os.path.join("models", "movie_mappings.pkl")
+    model_path = os.path.join("output", "ncf_model.pt")
+    movie_mappings_path = os.path.join("output", "movie_mappings.pkl")
 
     # Check if model files exist
     if not os.path.exists(model_path) or not os.path.exists(movie_mappings_path):

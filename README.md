@@ -1,13 +1,13 @@
 # Movie Recommendation API
 
-This API serves personalized movie recommendations using a Neural Collaborative Filtering model.
+This API serves personalized movie recommendations using a Neural Collaborative Filtering model trained on the MovieLens 32M dataset.
 
-## Public API
+## Endpoints
 
 The API is publicly available at:
 
 ```
-https://cineworld-movie-recommendation-api.onrender.com
+https://api-cineworld.onrender.com
 ```
 
 ### Get Recommendations
@@ -18,13 +18,13 @@ GET /recommendations?user_id={user_id}&top_k={top_k}
 
 Parameters:
 
-- `user_id`: User ID for which recommendations should be generated
-- `top_k` (optional): Number of recommendations to return (default: 20)
+- `user_id`: ID of the user for which recommendations should be generated for
+- `top_k` (optional): Number of movie recommendations to return (default: 10)
 
 Example:
 
 ```
-curl https://cineworld-movie-recommendation-api.onrender.com/recommendations?user_id=1&top_k=20
+curl https://api-cineworld.onrender.com/recommendations?user_id=1&top_k=10
 ```
 
 Response:
@@ -48,8 +48,8 @@ Response:
 
 For detailed API documentation, visit:
 
-- https://cineworld-movie-recommendation-api.onrender.com/docs - SwaggerUI API documentation
-- https://cineworld-movie-recommendation-api.onrender.com/redoc - ReDoc API documentation
+- https://api-cineworld.onrender.com/docs - SwaggerUI API documentation
+- https://api-cineworld.onrender.com/redoc - ReDoc API documentation
 
 ## Local Development
 
@@ -57,14 +57,14 @@ For detailed API documentation, visit:
 
 - Docker
 - Trained model files:
-  - `models/ncf_model.pt` - The trained PyTorch model
-  - `models/movie_mappings.pkl` - Movie data for recommendations
+  - `output/ncf_model.pt` - The trained Neural Collaborative Filtering model in PyTorch format
+  - `output/movie_mappings.pkl` - Reference data for the movies
 
 ### Setup
 
 1. Make sure you have the trained model files ready. These files should be generated from the `collaborative.py` script after training.
 
-2. Place the model files in a local `models` directory.
+2. Place the model files in a local `output` directory.
 
 3. Build the Docker image:
 
@@ -75,14 +75,14 @@ For detailed API documentation, visit:
 4. Run the Docker container:
 
    ```bash
-   docker run -p 8000:8000 -v $(pwd)/models:/app/models movie-recommender
+   docker run -p 8000:8000 -v $(pwd)/output:/app/output movie-recommender
    ```
 
    - Note: For Windows Command Prompt, use:
      ```
-     docker run -p 8000:8000 -v %cd%/models:/app/models movie-recommender
+     docker run -p 8000:8000 -v %cd%/output:/app/output movie-recommender
      ```
    - For Windows PowerShell, use:
      ```
-     docker run -p 8000:8000 -v ${PWD}/models:/app/models movie-recommender
+     docker run -p 8000:8000 -v ${PWD}/output:/app/output movie-recommender
      ```

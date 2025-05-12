@@ -6,5 +6,5 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
+      - ./output:/app/output
     restart: unless-stopped 

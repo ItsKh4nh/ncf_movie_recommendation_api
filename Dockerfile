@@ -6,10 +6,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and models
+# Copy application code and output
 COPY app.py .
-COPY models/ncf_model.pt models/
-COPY models/movie_mappings.pkl models/
+COPY output/ncf_model.pt output/
+COPY output/movie_mappings.pkl output/
 
 # Expose API port
 EXPOSE 8000

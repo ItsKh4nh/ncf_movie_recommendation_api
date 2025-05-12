@@ -190,7 +190,6 @@ def train_model():
     if torch.cuda.is_available():
         print(f"GPU device: {torch.cuda.get_device_name(0)}")
 
-    # Early Stopping to prevent Overfitting
     early_stop_callback = EarlyStopping(monitor="train_loss", patience=3, mode="min")
 
     trainer = pl.Trainer(
@@ -209,17 +208,17 @@ def train_model():
     print(f"Training completed in {time.time() - start_time:.2f} seconds")
 
     print("Saving necessary files...")
-    os.makedirs("models", exist_ok=True)
+    os.makedirs("output", exist_ok=True)
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "num_users": num_users,
             "num_items": num_items,
         },
-        "models/ncf_model.pt",
+        "output/ncf_model.pt",
     )
 
-    with open("models/movie_mappings.pkl", "wb") as f:
+    with open("output/movie_mappings.pkl", "wb") as f:
         pickle.dump({"movie_ids": all_movie_ids, "movie_titles": movie_id_to_title}, f)
     return model
 
@@ -238,7 +237,7 @@ def evaluate_model(model, train_ratings, test_ratings, all_movie_ids):
     test_user_item_set = set(zip(test_ratings["user_id"], test_ratings["movie_id"]))
     print(f"Evaluating on {len(test_user_item_set)} test samples")
 
-    # Dict of items interacted with by each user IN THE TRAINING SET ONLY
+    # Dict of items interacted with by each user
     print("Building user interaction dictionary from training data...")
     user_interacted_items_train = (
         train_ratings.groupby("user_id")["movie_id"].apply(set).to_dict()
@@ -249,38 +248,29 @@ def evaluate_model(model, train_ratings, test_ratings, all_movie_ids):
     K = 10
     device = next(model.parameters()).device
     hits, ndcgs = [], []
-    num_negatives_eval = (
-        99  # A common value for evaluation, can be kept at 999 if preferred
-    )
+    num_negatives_eval = 99
 
     print(f"Evaluating with {num_negatives_eval} negative samples per positive...")
     for u, positive_item in tqdm(test_user_item_set, desc="Evaluating"):
-        # Get items user interacted with during training
         interacted_train = user_interacted_items_train.get(u, set())
 
-        # Pool of potential negative candidates: all items MINUS items seen in training
         negative_pool = all_movie_ids_set - interacted_train
 
-        # Ensure the positive test item is not accidentally in the pool (it shouldn't be, but safety check)
         negative_pool.discard(positive_item)
 
-        # Sample negative items ensuring no replacement and sufficient pool size
         if len(negative_pool) >= num_negatives_eval:
             negative_samples = list(
                 np.random.choice(list(negative_pool), num_negatives_eval, replace=False)
             )
         else:
-            # Handle cases where user interacted with almost all items
             print(
                 f"Warning: User {u} has less than {num_negatives_eval} items in negative pool ({len(negative_pool)}). Using all available."
             )
             negative_samples = list(negative_pool)
 
-        # Combine the true positive item with the negative samples
         test_items = [positive_item] + negative_samples
         num_test_items = len(test_items)
 
-        # Prepare tensors for prediction
         user_tensor = torch.tensor([u] * num_test_items).to(device)
         item_tensor = torch.tensor(test_items).to(device)
 
@@ -324,8 +314,8 @@ def evaluate_model(model, train_ratings, test_ratings, all_movie_ids):
 def recommend(
     user_id,
     top_k=10,
-    model_path="models/ncf_model.pt",
-    movie_mappings_path="models/movie_mappings.pkl",
+    model_path="output/ncf_model.pt",
+    movie_mappings_path="output/movie_mappings.pkl",
 ):
     """Get movie recommendations for a specific user"""
     start_time = time.time()

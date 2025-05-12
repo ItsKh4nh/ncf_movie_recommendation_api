@@ -225,18 +225,18 @@ def train_model():
     print(f"Training completed in {time.time() - start_time:.2f} seconds")
 
     print("Saving model...")
-    os.makedirs("models", exist_ok=True)
+    os.makedirs("output", exist_ok=True)
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "num_users": num_users,
             "num_items": num_items,
         },
-        "models/ncf_model.pt",
+        "output/ncf_model.pt",
     )
 
     print("Saving movie data...")
-    with open("models/movie_mappings.pkl", "wb") as f:
+    with open("output/movie_mappings.pkl", "wb") as f:
         pickle.dump({"movie_ids": all_movie_ids, "movie_titles": movie_id_to_title}, f)
 
     print(f"Model and data saved successfully")
@@ -309,8 +309,8 @@ def evaluate_model(model):
 def recommend(
     user_id,
     top_k=20,
-    model_path="models/ncf_model.pt",
-    movie_mappings_path="models/movie_mappings.pkl",
+    model_path="output/ncf_model.pt",
+    movie_mappings_path="output/movie_mappings.pkl",
 ):
     """Get movie recommendations for a specific user"""
     start_time = time.time()
