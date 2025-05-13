@@ -5,17 +5,6 @@ This is a movie recommendation system that utilizes Neural Collaborative Filteri
 
 This API serves as the recommendation engine for my main project [CineWorld movie streaming platform](https://github.com/ItsKh4nh/cineworld_v2), check it out if you interested.
 
-## Results Achieved
-
-The model achieved impressive performance metrics:
-
-- **Hit Ratio@10**: 0.9588  
-  Measures how often the model successfully includes a movie the user would actually interact within the top 10 movie recommendations. A score of 0.9588 means that 95.88% of the time, a relevant movie appears in the user's top 10 list.
-
-- **NDCG@10**: 0.7406  
-  NDCG measures not just whether good recommendations appear in the top 10, but how well they are ranked (with higher positions being more important). A score of 0.7406 indicates strong ranking performance, with the most relevant items appearing nearer to the top of recommendations.
-
-
 ## Project Structure
 ```
 ├── app.py                 # FastAPI application for serving recommendations
@@ -37,11 +26,21 @@ The model achieved impressive performance metrics:
 - **Pickle**: Serialization and deserialization of trained model
 - **Docker**: Containerization for consistent deployment
 
+## Results Achieved
+
+The model achieved impressive performance metrics:
+
+- **Hit Ratio@10**: 0.9588  
+  Measures how often the model successfully includes a movie the user would actually interact within the top 10 movie recommendations. A score of 0.9588 means that 95.88% of the time, a relevant movie appears in the user's top 10 list.
+
+- **NDCG@10**: 0.7406  
+  NDCG measures not just whether good recommendations appear in the top 10, but how well they are ranked (with higher positions being more important). A score of 0.7406 indicates strong ranking performance, with the most relevant items appearing nearer to the top of recommendations.
+
 ## Installation and Setup
 
 ### Prerequisites
 - Python 3.10+
-- Docker (recommended for deployment)
+- Docker (recommended for Deployment)
 - Trained model files in the `output` directory:
   - `neumf_model.pt`: The trained Neural Collaborative Filtering model
   - `movie_mappings.pkl`: Movie ID to title mappings
@@ -102,7 +101,7 @@ or
    jupyter notebook training.ipynb
    ```
 
-3. The trained model will be saved to the `output` directory.
+3. The trained model and mappings will be saved to the `output` directory.
 
 ## API Access Guide
 
@@ -111,7 +110,7 @@ The API is publicly available at:
 https://api-cineworld.onrender.com
 ```
 
-### Get Recommendations
+### Endpoint
 
 ```
 GET /recommendations?user_id={user_id}&top_k={top_k}
