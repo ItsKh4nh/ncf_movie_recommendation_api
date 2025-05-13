@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy necessary files
 COPY app.py .
-COPY output/ncf_model.pt output/
+COPY output/neumf_model.pt output/
 COPY output/movie_mappings.pkl output/
 
 # Expose API port
