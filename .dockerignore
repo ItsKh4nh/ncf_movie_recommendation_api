@@ -1,9 +1,0 @@
-__pycache__/
-training/
-venv/
-.git
-.gitignore
-docker-compose*.yml
-training.py
-training.ipynb
-README.md
