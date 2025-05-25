@@ -25,58 +25,9 @@ app.add_middleware(
 )
 
 
-# Model definition - GMF Component
-class GMF(nn.Module):
-    """Generalized Matrix Factorization component of NCF"""
-
-    def __init__(self, num_users, num_items, embedding_dim):
-        super(GMF, self).__init__()
-        self.user_embedding = nn.Embedding(num_users, embedding_dim)
-        self.item_embedding = nn.Embedding(num_items, embedding_dim)
-
-    def forward(self, user_indices, item_indices):
-        user_embedded = self.user_embedding(user_indices)
-        item_embedded = self.item_embedding(item_indices)
-        # Element-wise product
-        gmf_vector = user_embedded * item_embedded
-        return gmf_vector
-
-
-# MLP Component
-class MLP(nn.Module):
-    """Multi-Layer Perceptron component of NCF"""
-
-    def __init__(self, num_users, num_items, embedding_dim, layers):
-        super(MLP, self).__init__()
-        self.user_embedding = nn.Embedding(num_users, embedding_dim)
-        self.item_embedding = nn.Embedding(num_items, embedding_dim)
-
-        # MLP layers
-        self.layers = nn.ModuleList()
-        input_size = embedding_dim * 2
-
-        for i, out_size in enumerate(layers):
-            if i == 0:
-                self.layers.append(nn.Linear(input_size, out_size))
-            else:
-                self.layers.append(nn.Linear(layers[i - 1], out_size))
-
-    def forward(self, user_indices, item_indices):
-        user_embedded = self.user_embedding(user_indices)
-        item_embedded = self.item_embedding(item_indices)
-        # Concatenation
-        mlp_vector = torch.cat([user_embedded, item_embedded], dim=-1)
-
-        # Feed forward through layers
-        for layer in self.layers:
-            mlp_vector = nn.ReLU()(layer(mlp_vector))
-
-        return mlp_vector
-
-
-# Full NeuMF Model
-class NeuMF(pl.LightningModule):
-    """Neural Matrix Factorization (NeuMF) - Full NCF model combining GMF and MLP"""
+# Model definition
+class NCF(pl.LightningModule):
+    """Neural Collaborative Filtering (NCF)"""
 
     def __init__(
         self,
@@ -84,41 +35,31 @@ class NeuMF(pl.LightningModule):
         num_items,
         ratings=None,
         all_movie_ids=None,
-        embedding_dim_gmf=8,
-        embedding_dim_mlp=8,
-        mlp_layers=[32, 16, 8],
+        embedding_dim=8,
         lr=0.001,
-        dropout_rate=0.2,
     ):
         super().__init__()
-
-        # GMF component
-        self.gmf = GMF(num_users, num_items, embedding_dim_gmf)
-
-        # MLP component
-        self.mlp_layers = [embedding_dim_mlp * 2] + mlp_layers
-        self.mlp = MLP(num_users, num_items, embedding_dim_mlp, self.mlp_layers)
-
-        # Output layer - combines GMF and MLP
-        self.dropout = nn.Dropout(dropout_rate)
-        self.output = nn.Linear(embedding_dim_gmf + mlp_layers[-1], 1)
-
-        # Other parameters
+        self.user_embedding = nn.Embedding(
+            num_embeddings=num_users, embedding_dim=embedding_dim
+        )
+        self.item_embedding = nn.Embedding(
+            num_embeddings=num_items, embedding_dim=embedding_dim
+        )
+        self.fc1 = nn.Linear(in_features=embedding_dim * 2, out_features=64)
+        self.fc2 = nn.Linear(in_features=64, out_features=32)
+        self.output = nn.Linear(in_features=32, out_features=1)
         self.ratings = ratings
         self.all_movie_ids = all_movie_ids
         self.lr = lr
-        self.save_hyperparameters(ignore=["ratings", "all_movie_ids"])
 
     def forward(self, user_input, item_input):
-        # Get GMF and MLP vectors
-        gmf_vector = self.gmf(user_input, item_input)
-        mlp_vector = self.mlp(user_input, item_input)
+        user_embedded = self.user_embedding(user_input)
+        item_embedded = self.item_embedding(item_input)
 
-        # Concatenate the two vectors
-        vector = torch.cat([gmf_vector, mlp_vector], dim=-1)
-        vector = self.dropout(vector)
+        vector = torch.cat([user_embedded, item_embedded], dim=-1)
+        vector = nn.ReLU()(self.fc1(vector))
+        vector = nn.ReLU()(self.fc2(vector))
 
-        # Final prediction
         pred = nn.Sigmoid()(self.output(vector))
         return pred
 
@@ -132,7 +73,7 @@ def load_model():
     global model, movie_mappings
 
     # Set paths
-    model_path = os.path.join("output", "neumf_model.pt")
+    model_path = os.path.join("output", "ncf_model.pt")
     movie_mappings_path = os.path.join("output", "movie_mappings.pkl")
 
     # Check if model files exist
@@ -143,17 +84,11 @@ def load_model():
 
     # Load model
     checkpoint = torch.load(model_path, map_location=torch.device("cpu"))
-
-    mlp_layers = checkpoint.get("mlp_layers", [32, 16, 8])
-
-    model = NeuMF(
+    model = NCF(
         num_users=checkpoint["num_users"],
         num_items=checkpoint["num_items"],
         ratings=None,
         all_movie_ids=None,
-        embedding_dim_gmf=checkpoint.get("embedding_dim_gmf", 8),
-        embedding_dim_mlp=checkpoint.get("embedding_dim_mlp", 8),
-        mlp_layers=mlp_layers,
     )
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -189,7 +124,7 @@ def get_recommendations(user_id: int, top_k: int = 10):
     movie_titles = movie_mappings["movie_titles"]
 
     # Limit user_id to what model supports
-    max_users = model.gmf.user_embedding.num_embeddings
+    max_users = model.user_embedding.num_embeddings
     if user_id >= max_users:
         raise HTTPException(
             status_code=400, detail=f"User ID must be less than {max_users}"
