@@ -11,7 +11,7 @@ This API serves as the recommendation engine for my main project [CineWorld movi
 ├── docker-compose.yml     # Docker Compose configuration for local deployment
 ├── Dockerfile             # Docker configuration for containerization
 ├── output/                # Directory for trained model artifacts
-│   ├── neumf_model.pt     # Trained Neural Collaborative Filtering model
+│   ├── ncf_model.pt     # Trained Neural Collaborative Filtering model
 │   └── movie_mappings.pkl # Movie ID to title mappings
 ├── requirements.txt       # Python dependencies
 ├── training.py            # Training script
@@ -42,7 +42,7 @@ The model achieved impressive performance metrics:
 - Python 3.10+
 - Docker (recommended for Deployment)
 - Trained model files in the `output` directory:
-  - `neumf_model.pt`: The trained Neural Collaborative Filtering model
+  - `ncf_model.pt`: The trained Neural Collaborative Filtering model
   - `movie_mappings.pkl`: Movie ID to title mappings
 
 ### Option 1: Using Docker (Recommended)
