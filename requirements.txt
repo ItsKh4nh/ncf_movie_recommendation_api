@@ -1,5 +1,5 @@
 fastapi==0.104.1
 uvicorn==0.23.2
-torch==2.7.0
+torch==2.1.0+cpu
 numpy==1.26.1
-pytorch-lightning==2.7.0
+pytorch-lightning==2.1.0+cpu
