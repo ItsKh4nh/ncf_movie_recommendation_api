@@ -3,4 +3,3 @@ uvicorn==0.23.2
 torch==2.1.0
 numpy==1.26.1
 pytorch-lightning==2.1.0
-python-multipart==0.0.6
