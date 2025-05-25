@@ -1,17 +1,17 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import torch
-import os
+import torch.nn as nn
+import pytorch_lightning as pl
 import pickle
 import numpy as np
 import time
-import torch.nn as nn
-import pytorch_lightning as pl
+import os
 
 # Setup FastAPI app
 app = FastAPI(
-    title="Movie Recommendation API",
-    description="API for personalized movie recommendations using Neural Collaborative Filtering",
+    title="NCF Movies Recommendation API",
+    description="API for personalized movie recommendations using Neural Collaborative Filtering architecture",
     version="1.0.0",
 )
 
