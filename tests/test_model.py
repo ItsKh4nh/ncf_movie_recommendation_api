@@ -1,5 +1,6 @@
 import pytest
 import torch
+
 from app import NCF
 
 

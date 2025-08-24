@@ -1,7 +1,8 @@
+import os
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
-import os
 
 
 def test_read_root(client):
@@ -41,8 +42,8 @@ def test_recommendations_valid_request(client):
     mock_model.parameters.return_value = [MagicMock(device="cpu")]
 
     # Mock model output
-    import torch
     import numpy as np
+    import torch
 
     mock_scores = torch.tensor([0.9, 0.8, 0.7, 0.6, 0.5])
     mock_model.return_value.cpu.return_value.numpy.return_value = mock_scores

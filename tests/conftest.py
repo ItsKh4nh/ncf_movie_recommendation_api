@@ -1,11 +1,13 @@
-import pytest
-from fastapi.testclient import TestClient
 import os
-import tempfile
 import pickle
-import torch
+import tempfile
+
 import numpy as np
-from app import app, NCF
+import pytest
+import torch
+from fastapi.testclient import TestClient
+
+from app import NCF, app
 
 
 @pytest.fixture
