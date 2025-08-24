@@ -1,15 +1,15 @@
 # 1. IMPORTS AND SETUP
 import os
-import numpy as np
-import pandas as pd
-from tqdm.notebook import tqdm
 import pickle
 
+import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import TQDMProgressBar, EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, TQDMProgressBar
+from torch.utils.data import DataLoader, Dataset
+from tqdm.notebook import tqdm
 
 np.random.seed(123)
 
@@ -18,19 +18,12 @@ ratings = pd.read_csv("/kaggle/input/tmdb-movie-dataset/movielens.csv")
 ratings["timestamp"] = pd.to_datetime(ratings["timestamp"], unit="s")
 
 # Split into Train/Test sets - last interacted movie as Test item
-ratings["rank_latest"] = ratings.groupby(["user_id"])["timestamp"].rank(
-    method="first", ascending=False
-)
+ratings["rank_latest"] = ratings.groupby(["user_id"])["timestamp"].rank(method="first", ascending=False)
 train_ratings = ratings[ratings["rank_latest"] != 1]
 test_ratings = ratings[ratings["rank_latest"] == 1]
 
 # Create a mapping of movie_id to title
-movie_id_to_title = (
-    ratings[["movie_id", "title"]]
-    .drop_duplicates()
-    .set_index("movie_id")
-    .to_dict()["title"]
-)
+movie_id_to_title = ratings[["movie_id", "title"]].drop_duplicates().set_index("movie_id").to_dict()["title"]
 
 # Prepare final training data
 train_ratings = train_ratings[["user_id", "movie_id", "rating"]]
@@ -93,17 +86,11 @@ class MovieLensTrainDataset(Dataset):
 class NCF(pl.LightningModule):
     """Neural Collaborative Filtering (NCF)"""
 
-    def __init__(
-        self, num_users, num_items, ratings, all_movie_ids, embedding_dim=8, lr=0.001
-    ):
+    def __init__(self, num_users, num_items, ratings, all_movie_ids, embedding_dim=8, lr=0.001):
         super().__init__()
         print(f"Initializing NCF model")
-        self.user_embedding = nn.Embedding(
-            num_embeddings=num_users, embedding_dim=embedding_dim
-        )
-        self.item_embedding = nn.Embedding(
-            num_embeddings=num_items, embedding_dim=embedding_dim
-        )
+        self.user_embedding = nn.Embedding(num_embeddings=num_users, embedding_dim=embedding_dim)
+        self.item_embedding = nn.Embedding(num_embeddings=num_items, embedding_dim=embedding_dim)
         self.fc1 = nn.Linear(in_features=embedding_dim * 2, out_features=64)
         self.fc2 = nn.Linear(in_features=64, out_features=32)
         self.output = nn.Linear(in_features=32, out_features=1)

@@ -1,12 +1,13 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import os
+import pickle
+import time
+
+import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
-import pickle
-import numpy as np
-import time
-import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 # Setup FastAPI app
 app = FastAPI(
@@ -39,12 +40,8 @@ class NCF(pl.LightningModule):
         lr=0.001,
     ):
         super().__init__()
-        self.user_embedding = nn.Embedding(
-            num_embeddings=num_users, embedding_dim=embedding_dim
-        )
-        self.item_embedding = nn.Embedding(
-            num_embeddings=num_items, embedding_dim=embedding_dim
-        )
+        self.user_embedding = nn.Embedding(num_embeddings=num_users, embedding_dim=embedding_dim)
+        self.item_embedding = nn.Embedding(num_embeddings=num_items, embedding_dim=embedding_dim)
         self.fc1 = nn.Linear(in_features=embedding_dim * 2, out_features=64)
         self.fc2 = nn.Linear(in_features=64, out_features=32)
         self.output = nn.Linear(in_features=32, out_features=1)
@@ -78,9 +75,7 @@ def load_model():
 
     # Check if model files exist
     if not os.path.exists(model_path) or not os.path.exists(movie_mappings_path):
-        raise FileNotFoundError(
-            f"Model files not found. Ensure {model_path} and {movie_mappings_path} exist."
-        )
+        raise FileNotFoundError(f"Model files not found. Ensure {model_path} and {movie_mappings_path} exist.")
 
     # Load model
     checkpoint = torch.load(model_path, map_location=torch.device("cpu"))
@@ -113,9 +108,7 @@ def read_root():
 @app.get("/recommendations")
 def get_recommendations(user_id: int, top_k: int = 10):
     if model is None or movie_mappings is None:
-        raise HTTPException(
-            status_code=503, detail="Model not loaded. Please try again later."
-        )
+        raise HTTPException(status_code=503, detail="Model not loaded. Please try again later.")
 
     start_time = time.time()
 
@@ -126,9 +119,7 @@ def get_recommendations(user_id: int, top_k: int = 10):
     # Limit user_id to what model supports
     max_users = model.user_embedding.num_embeddings
     if user_id >= max_users:
-        raise HTTPException(
-            status_code=400, detail=f"User ID must be less than {max_users}"
-        )
+        raise HTTPException(status_code=400, detail=f"User ID must be less than {max_users}")
 
     # Predict scores
     device = next(model.parameters()).device
