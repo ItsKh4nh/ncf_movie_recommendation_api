@@ -1,6 +1,7 @@
 import os
 import pickle
 import time
+from contextlib import asynccontextmanager
 
 import numpy as np
 import pytorch_lightning as pl
@@ -9,11 +10,21 @@ import torch.nn as nn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    load_model()
+    yield
+    # Shutdown (if needed)
+
+
 # Setup FastAPI app
 app = FastAPI(
     title="NCF Movies Recommendation API",
     description="API for personalized movie recommendations using Neural Collaborative Filtering architecture",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -93,11 +104,6 @@ def load_model():
         movie_mappings = pickle.load(f)
 
     return {"status": "Model loaded successfully"}
-
-
-@app.on_event("startup")
-async def startup_event():
-    load_model()
 
 
 @app.get("/")
